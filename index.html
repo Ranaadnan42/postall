@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PostAll</title>
+<meta name="theme-color" content="#0f172a">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
+  --brand:#6d28d9; --brand2:#db2777; --ok:#059669; --bad:#dc2626; --warn:#d97706;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#0b1020; --card:#131a2e; --ink:#e5e7eb; --muted:#94a3b8; --line:#243049; }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",system-ui,sans-serif;font-size:15px}
+.wrap{max-width:720px;margin:0 auto;padding:16px 16px 90px}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:linear-gradient(120deg,var(--brand),var(--brand2));color:#fff}
+header h1{margin:0;font-size:20px;font-weight:800;letter-spacing:-.3px}
+header small{opacity:.85}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:14px 0}
+h2{font-size:16px;margin:0 0 12px}
+input,textarea,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);font:inherit}
+textarea{min-height:110px;resize:vertical}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:12px 16px;cursor:pointer}
+.btn{background:var(--brand);color:#fff}
+.btn.big{width:100%;padding:16px;font-size:17px;background:linear-gradient(120deg,var(--brand),var(--brand2))}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--ink)}
+.btn.sm{padding:8px 12px;font-size:13px}
+button:disabled{opacity:.55;cursor:not-allowed}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted);font-size:13px}
+.hide{display:none!important}
+.plats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.plat{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.plat b{display:flex;align-items:center;gap:8px}
+.dot{width:12px;height:12px;border-radius:50%}
+.acc{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px;border:1px solid var(--line);border-radius:12px;margin:6px 0}
+.acc label{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.acc input{width:20px;height:20px}
+.acc span.n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drop{border:2px dashed var(--line);border-radius:14px;padding:22px;text-align:center;cursor:pointer}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:10px}
+.thumb{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#000}
+.thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
+.thumb button{position:absolute;top:4px;right:4px;padding:2px 8px;border-radius:8px;background:#000a;color:#fff}
+.status{padding:10px;border-radius:12px;margin:6px 0;border:1px solid var(--line);font-size:14px}
+.status.ok{border-color:var(--ok);color:var(--ok)}
+.status.bad{border-color:var(--bad);color:var(--bad)}
+.status.wait{color:var(--warn)}
+.banner{padding:10px 14px;border-radius:12px;font-weight:600;font-size:14px}
+.banner.ok{background:#05966915;color:var(--ok)}
+.banner.bad{background:#dc262615;color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+.tabs{display:flex;gap:6px;margin-top:10px}
+.tabs button{flex:1;background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.tabs button.on{background:var(--ink);color:var(--card)}
+code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;border-radius:6px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:12px 18px;border-radius:12px;max-width:92%;z-index:9}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>PostAll</h1><small>One click. Every platform.</small></div>
+  <button id="logoutBtn" class="btn ghost sm hide" style="color:#fff;border-color:#ffffff66">Logout</button>
+</header>
+
+<div class="wrap">
+
+  <!-- AUTH -->
+  <section id="authView" class="hide">
+    <div class="card">
+      <h2 id="authTitle">Login</h2>
+      <div id="nameBox" class="hide" style="margin-bottom:10px"><input id="aName" placeholder="Your name"></div>
+      <input id="aEmail" type="email" placeholder="Email" style="margin-bottom:10px">
+      <input id="aPass" type="password" placeholder="Password (min 6)" style="margin-bottom:12px">
+      <button id="authBtn" class="btn big">Login</button>
+      <p class="muted" style="text-align:center;margin-top:14px">
+        <a href="#" id="authSwitch">New here? Create account</a>
+      </p>
+    </div>
+    <p class="muted" style="text-align:center"><a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a></p>
+  </section>
+
+  <!-- APP -->
+  <section id="appView" class="hide">
+    <div id="subBanner" class="banner"></div>
+    <div class="tabs" id="tabs">
+      <button data-t="post" class="on">Post</button>
+      <button data-t="accounts">Accounts</button>
+      <button data-t="history">History</button>
+      <button data-t="admin" class="hide" id="adminTab">Admin</button>
+    </div>
+
+    <!-- POST -->
+    <div id="t-post">
+      <div class="card">
+        <h2>1. Pictures / Videos</h2>
+        <div class="drop" id="drop">Tap to select pictures or videos<br><span class="muted">Max 50 MB each</span></div>
+        <input type="file" id="files" accept="image/*,video/*" multiple class="hide">
+        <div class="thumbs" id="thumbs"></div>
+      </div>
+      <div class="card">
+        <h2>2. Write caption</h2>
+        <textarea id="caption" placeholder="Write what you want to post... #hashtags"></textarea>
+        <p class="muted" id="capCount">0 characters</p>
+      </div>
+      <div class="card">
+        <h2>3. Where to post</h2>
+        <div id="pickList"></div>
+        <p class="muted" id="noAcc">No account connected yet. Open the <b>Accounts</b> tab.</p>
+      </div>
+      <button id="postBtn" class="btn big">🚀 Post to All</button>
+      <button id="snapBtn" class="btn ghost" style="width:100%;margin-top:10px">👻 Share to Snapchat / other apps</button>
+      <div id="results" style="margin-top:12px"></div>
+    </div>
+
+    <!-- ACCOUNTS -->
+    <div id="t-accounts" class="hide">
+      <div class="card">
+        <h2>Connect your accounts</h2>
+        <div class="plats">
+          <div class="plat"><b><span class="dot" style="background:#1877f2"></span>Facebook + Instagram</b>
+            <span class="muted">Pages and linked Instagram business accounts</span>
+            <button class="btn sm" data-c="facebook">Connect</button></div>
+          <div class="plat"><b><span class="dot" style="background:#ff0000"></span>YouTube</b>
+            <span class="muted">Videos & Shorts</span>
+            <button class="btn sm" data-c="youtube">Connect</button></div>
+          <div class="plat"><b><span class="dot" style="background:#111"></span>TikTok</b>
+            <span class="muted">Videos & photos</span>
+            <button class="btn sm" data-c="tiktok">Connect</button></div>
+          <div class="plat"><b><span class="dot" style="background:#fffc00;border:1px solid #ccc"></span>Snapchat</b>
+            <span class="muted">Use the "Share to Snapchat" button on the Post tab</span></div>
+        </div>
+      </div>
+      <div class="card"><h2>Connected</h2><div id="accList" class="muted">Loading…</div></div>
+    </div>
+
+    <!-- HISTORY -->
+    <div id="t-history" class="hide"><div class="card"><h2>Recent posts</h2><div id="histList" class="muted">Loading…</div></div></div>
+
+    <!-- ADMIN -->
+    <div id="t-admin" class="hide">
+      <div class="card">
+        <h2>Customers</h2>
+        <input id="uSearch" placeholder="Search email" style="margin-bottom:10px">
+        <div style="overflow-x:auto"><table><thead><tr><th>Email</th><th>Valid till</th><th></th></tr></thead><tbody id="uRows"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>Platform keys</h2>
+        <p class="muted">Paste these Redirect URLs in each developer console:</p>
+        <p class="muted">Facebook: <code id="rFb"></code></p>
+        <p class="muted">YouTube (Google): <code id="rYt"></code></p>
+        <p class="muted">TikTok: <code id="rTt"></code></p>
+        <div id="keyForm" style="display:grid;gap:8px;margin-top:10px"></div>
+        <button id="saveKeys" class="btn" style="margin-top:10px">Save keys</button>
+      </div>
+    </div>
+  </section>
+</div>
+<div id="toast" class="toast hide"></div>
+
+<script>
+const SB_URL = "https://fchitemkdutfjvfzybhq.supabase.co";
+const SB_KEY = "sb_publishable_D8XiYGxRQom9bQ7QTGJGNw_pb3CvQuJ";
+const SUPPORT_WHATSAPP = "923075267349";
+const sb = supabase.createClient(SB_URL, SB_KEY);
+const $ = (id) => document.getElementById(id);
+const COLORS = { facebook:"#1877f2", instagram:"#e1306c", youtube:"#ff0000", tiktok:"#111" };
+let me = null, profile = null, conns = [], picked = [], signup = false;
+
+function toast(t){ const el=$("toast"); el.textContent=t; el.classList.remove("hide"); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.add("hide"),4000); }
+function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+// ---------- AUTH ----------
+$("authSwitch").onclick = (e) => { e.preventDefault(); signup=!signup;
+  $("authTitle").textContent = signup?"Create account":"Login"; $("authBtn").textContent = signup?"Create account":"Login";
+  $("nameBox").classList.toggle("hide",!signup); $("authSwitch").textContent = signup?"Have an account? Login":"New here? Create account"; };
+$("authBtn").onclick = async () => {
+  const email=$("aEmail").value.trim(), password=$("aPass").value;
+  if(!email||password.length<6) return toast("Enter email and a 6+ character password");
+  $("authBtn").disabled=true;
+  const r = signup
+    ? await sb.auth.signUp({ email, password, options:{ data:{ full_name:$("aName").value.trim() }, emailRedirectTo: location.origin+location.pathname } })
+    : await sb.auth.signInWithPassword({ email, password });
+  $("authBtn").disabled=false;
+  if(r.error) return toast(r.error.message);
+  if(signup && !r.data.session) return toast("Check your email and tap the confirm link, then login.");
+};
+$("logoutBtn").onclick = () => sb.auth.signOut();
+sb.auth.onAuthStateChange((_e, session) => { me = session?.user || null; render(); });
+
+async function render(){
+  $("authView").classList.toggle("hide", !!me);
+  $("appView").classList.toggle("hide", !me);
+  $("logoutBtn").classList.toggle("hide", !me);
+  if(!me) return;
+  const { data } = await sb.from("profiles").select("*").eq("id", me.id).single();
+  profile = data;
+  $("adminTab").classList.toggle("hide", !profile?.is_admin);
+  subBanner();
+  await loadConns();
+  handleReturn();
+}
+function subBanner(){
+  const b=$("subBanner"); const until = profile?.sub_until ? new Date(profile.sub_until) : null;
+  const days = until ? Math.ceil((until-new Date())/864e5) : 0;
+  if(profile?.blocked){ b.className="banner bad"; b.innerHTML=`Account blocked. <a href="https://wa.me/${SUPPORT_WHATSAPP}">Contact support</a>`; return; }
+  if(days>0){ b.className="banner ok"; b.textContent = days>3650 ? "Lifetime access" : `Subscription active · ${days} day${days>1?"s":""} left`; }
+  else { b.className="banner bad"; b.innerHTML=`Subscription expired. <a href="https://wa.me/${SUPPORT_WHATSAPP}?text=${encodeURIComponent("I want to renew PostAll: "+(me.email||""))}">Renew on WhatsApp</a>`; }
+}
+
+// ---------- TABS ----------
+document.querySelectorAll("#tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#tabs button").forEach(x=>x.classList.toggle("on",x===b));
+  ["post","accounts","history","admin"].forEach(t=>$("t-"+t).classList.toggle("hide", t!==b.dataset.t));
+  if(b.dataset.t==="history") loadHistory();
+  if(b.dataset.t==="admin") loadAdmin();
+});
+
+// ---------- ACCOUNTS ----------
+async function loadConns(){
+  const { data, error } = await sb.rpc("my_connections");
+  conns = data || [];
+  $("accList").innerHTML = conns.length ? conns.map(c=>`<div class="acc"><label><span class="dot" style="background:${COLORS[c.platform]}"></span><span class="n"><b>${esc(c.platform)}</b> · ${esc(c.account_name)}</span></label><button class="btn ghost sm" data-rm="${c.id}">Remove</button></div>`).join("") : "No account connected yet.";
+  document.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{ if(!confirm("Remove this account?"))return; await sb.rpc("remove_connection",{cid:b.dataset.rm}); loadConns(); });
+  $("noAcc").classList.toggle("hide", conns.length>0);
+  $("pickList").innerHTML = conns.map(c=>`<div class="acc"><label><input type="checkbox" checked value="${c.id}"><span class="dot" style="background:${COLORS[c.platform]}"></span><span class="n"><b>${esc(c.platform)}</b> · ${esc(c.account_name)}</span></label></div>`).join("");
+}
+document.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => {
+  const { data:{ session } } = await sb.auth.getSession();
+  const ret = location.origin + location.pathname;
+  location.href = `${SB_URL}/functions/v1/connect/start?platform=${b.dataset.c}&token=${encodeURIComponent(session.access_token)}&return=${encodeURIComponent(ret)}`;
+});
+function handleReturn(){
+  const p = new URLSearchParams(location.search);
+  if(p.get("connected")) toast(`✅ ${p.get("connected")} connected`);
+  if(p.get("error")) toast(`❌ ${p.get("error")}`);
+  if(p.get("connected")||p.get("error")) history.replaceState({}, "", location.pathname);
+}
+
+// ---------- MEDIA ----------
+$("drop").onclick = () => $("files").click();
+$("files").onchange = (e) => {
+  for(const f of e.target.files){
+    if(f.size > 50*1024*1024){ toast(`${f.name} is over 50 MB`); continue; }
+    picked.push({ file:f, type:f.type.startsWith("video")?"video":"image", url:URL.createObjectURL(f) });
+  }
+  e.target.value=""; drawThumbs();
+};
+function drawThumbs(){
+  $("thumbs").innerHTML = picked.map((m,i)=>`<div class="thumb">${m.type==="video"?`<video src="${m.url}" muted></video>`:`<img src="${m.url}">`}<button data-x="${i}">✕</button></div>`).join("");
+  document.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>{ picked.splice(+b.dataset.x,1); drawThumbs(); });
+}
+$("caption").oninput = () => $("capCount").textContent = `${$("caption").value.length} characters`;
+
+// ---------- POST TO ALL ----------
+$("postBtn").onclick = async () => {
+  const ids = [...document.querySelectorAll("#pickList input:checked")].map(i=>i.value);
+  const caption = $("caption").value.trim();
+  if(!ids.length) return toast("Select at least one account");
+  if(!picked.length && !caption) return toast("Add a picture/video or write a caption");
+  $("postBtn").disabled = true; $("results").innerHTML = `<div class="status wait">Uploading files…</div>`;
+  try{
+    const postId = crypto.randomUUID();
+    const media = [];
+    for(const [i,m] of picked.entries()){
+      const ext = (m.file.name.split(".").pop()||"bin").toLowerCase();
+      const path = `${me.id}/${postId}/${i}.${ext}`;
+      const up = await sb.storage.from("media").upload(path, m.file, { contentType:m.file.type, upsert:true });
+      if(up.error) throw new Error(up.error.message);
+      media.push({ url: sb.storage.from("media").getPublicUrl(path).data.publicUrl, type:m.type, size:m.file.size });
+    }
+    const { data:{ session } } = await sb.auth.getSession();
+    $("results").innerHTML = ids.map(id=>{ const c=conns.find(x=>x.id===id); return `<div class="status wait" id="r-${id}">⏳ ${esc(c.platform)} · ${esc(c.account_name)} — posting…</div>`; }).join("");
+    await Promise.all(ids.map(async id => {
+      const c = conns.find(x=>x.id===id); const el = $("r-"+id);
+      try{
+        const res = await fetch(`${SB_URL}/functions/v1/publish`, { method:"POST",
+          headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY },
+          body: JSON.stringify({ post_id:postId, connection_id:id, caption, media }) }).then(r=>r.json());
+        if(res.ok){ el.className="status ok"; el.textContent = `✅ ${c.platform} · ${c.account_name} — ${res.skipped || (res.privacy==="SELF_ONLY"?"posted (private)":"posted")}`; }
+        else { el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${res.error}`; }
+      }catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} — ${e.message}`; }
+    }));
+    toast("Done");
+  }catch(e){ $("results").innerHTML = `<div class="status bad">❌ ${esc(e.message)}</div>`; }
+  $("postBtn").disabled = false;
+};
+
+// ---------- SNAPCHAT / SHARE ----------
+$("snapBtn").onclick = async () => {
+  const caption = $("caption").value.trim();
+  const files = picked.map(m=>m.file);
+  try{ if(caption) await navigator.clipboard.writeText(caption); }catch(_){}
+  if(navigator.canShare && files.length && navigator.canShare({ files })){
+    try{ await navigator.share({ files, text: caption }); toast("Caption copied — paste it in Snapchat"); }catch(_){}
+  } else if(files.length) toast("Sharing files works in the mobile app / phone browser");
+  else toast("Select a picture or video first");
+};
+
+// ---------- HISTORY ----------
+async function loadHistory(){
+  const { data } = await sb.from("posts").select("*").order("created_at",{ascending:false}).limit(30);
+  $("histList").innerHTML = (data||[]).length ? data.map(p=>`<div class="acc" style="display:block"><div class="muted">${new Date(p.created_at).toLocaleString()} · ${(p.media||[]).length} file(s)</div><div style="margin:4px 0">${esc((p.caption||"").slice(0,120))}</div>${Object.entries(p.results||{}).map(([k,v])=>`<div class="muted">${v.ok?"✅":"❌"} ${esc(k)} ${v.ok?"":esc(v.error)}</div>`).join("")}</div>`).join("") : "No posts yet.";
+}
+
+// ---------- ADMIN ----------
+const KEYS = [["app_url","App URL (where this app is hosted)"],["fb_app_id","Facebook App ID"],["fb_app_secret","Facebook App Secret"],["fb_graph_version","Facebook Graph version (e.g. v23.0)"],["google_client_id","Google Client ID"],["google_client_secret","Google Client Secret"],["tiktok_client_key","TikTok Client Key"],["tiktok_client_secret","TikTok Client Secret"]];
+let allUsers = [];
+async function loadAdmin(){
+  const base = `${SB_URL}/functions/v1/connect/`;
+  $("rFb").textContent = base+"facebook"; $("rYt").textContent = base+"youtube"; $("rTt").textContent = base+"tiktok";
+  const { data: st } = await sb.rpc("admin_get_settings");
+  const map = Object.fromEntries((st||[]).map(r=>[r.key,r.value]));
+  $("keyForm").innerHTML = KEYS.map(([k,l])=>`<label class="muted">${l}<input data-k="${k}" value="${esc(map[k]||"")}" ${k.includes("secret")?'type="password"':""}></label>`).join("");
+  const { data } = await sb.from("profiles").select("*").order("created_at",{ascending:false});
+  allUsers = data||[]; drawUsers();
+}
+function drawUsers(){
+  const q = $("uSearch").value.toLowerCase();
+  $("uRows").innerHTML = allUsers.filter(u=>(u.email||"").toLowerCase().includes(q)).map(u=>{
+    const d = u.sub_until ? new Date(u.sub_until) : null; const live = d && d>new Date() && !u.blocked;
+    return `<tr><td>${esc(u.email)}<div class="muted">${esc(u.full_name)}</div></td>
+      <td style="color:${live?"var(--ok)":"var(--bad)"}">${u.blocked?"Blocked":d?d.toLocaleDateString():"-"}</td>
+      <td><div class="row"><button class="btn sm" data-add="${u.id}" data-days="30">+1 month</button>
+      <button class="btn sm" data-add="${u.id}" data-days="365">+1 year</button>
+      <button class="btn ghost sm" data-blk="${u.id}">${u.blocked?"Unblock":"Block"}</button></div></td></tr>`;
+  }).join("");
+  document.querySelectorAll("[data-add]").forEach(b=>b.onclick=async()=>{
+    const u = allUsers.find(x=>x.id===b.dataset.add);
+    const from = u.sub_until && new Date(u.sub_until)>new Date() ? new Date(u.sub_until) : new Date();
+    const until = new Date(from.getTime() + (+b.dataset.days)*864e5);
+    const { error } = await sb.rpc("admin_set_sub",{ uid:u.id, until_ts:until.toISOString(), is_blocked:false });
+    if(error) return toast(error.message); toast("Subscription updated"); loadAdmin();
+  });
+  document.querySelectorAll("[data-blk]").forEach(b=>b.onclick=async()=>{
+    const u = allUsers.find(x=>x.id===b.dataset.blk);
+    const { error } = await sb.rpc("admin_set_sub",{ uid:u.id, until_ts:u.sub_until, is_blocked:!u.blocked });
+    if(error) return toast(error.message); loadAdmin();
+  });
+}
+$("uSearch").oninput = drawUsers;
+$("saveKeys").onclick = async () => {
+  for(const el of document.querySelectorAll("[data-k]")){
+    const { error } = await sb.rpc("admin_set_setting",{ k:el.dataset.k, v:el.value.trim() });
+    if(error) return toast(error.message);
+  }
+  toast("Keys saved");
+};
+</script>
+</body>
+</html>
