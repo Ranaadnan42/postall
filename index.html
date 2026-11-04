@@ -6,7 +6,7 @@
 <title>PostAll</title>
 <meta name="theme-color" content="#0f172a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
@@ -61,6 +61,29 @@ td,th{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertic
 .tabs button{flex:1;background:var(--card);color:var(--ink);border:1px solid var(--line)}
 .tabs button.on{background:var(--ink);color:var(--card)}
 code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;border-radius:6px}
+.guide{margin-top:12px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.guide .gh{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;background:linear-gradient(120deg,#6d28d914,#db277714);font-weight:700;font-size:14px}
+.guide .gh .ur{font-weight:600}
+.guide .gr{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-top:1px solid var(--line)}
+.guide .ic{flex:0 0 26px;height:26px;border-radius:8px;display:grid;place-items:center;font-size:14px;background:#64748b18}
+.guide .ic.ok{background:#05966918}.guide .ic.no{background:#dc262618}.guide .ic.wa{background:#d9770618}
+.guide .tx{flex:1;min-width:0}
+.guide .en{font-size:13.5px;line-height:1.45}
+.guide .ur,.ur{font-family:"Noto Nastaliq Urdu",serif;direction:rtl;text-align:right;font-size:13.5px;line-height:2.1;color:var(--muted)}
+.guide .gh .ur{color:inherit;line-height:1.8}
+.guide .pg{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.guide .pc{border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.guide .pc.ok{border-color:#05966955;background:#05966908}.guide .pc.no{border-color:#dc262655;background:#dc262608}.guide .pc.wa{border-color:#d9770655;background:#d9770608}
+.guide .pc b{display:block;font-size:13.5px}
+.guide .pc .en{font-size:12px;color:var(--muted);line-height:1.35}
+.guide .pc .ur{font-size:12px;line-height:1.9;text-align:right}
+.acc.pk{flex-wrap:wrap}
+.anote{flex-basis:100%;margin:6px 0 0 30px;padding:6px 10px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;font-weight:600}
+.anote:empty{display:none}
+.anote.ok{background:#05966912;color:var(--ok)}.anote.no{background:#dc262612;color:var(--bad)}.anote.wa{background:#d9770612;color:var(--warn)}
+.anote .ur{margin-left:auto;font-size:12px;line-height:1.8;color:inherit;font-weight:400}
+.thumb .len{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:6px;background:#000a;color:#fff;font-size:11px;font-weight:700}
+.status .ur{margin-top:4px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:12px 18px;border-radius:12px;max-width:92%;z-index:9}
 </style>
 </head>
@@ -104,6 +127,7 @@ code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;bo
         <div class="drop" id="drop">Tap to select pictures or videos<br><span class="muted">Pictures up to 50 MB · Videos up to 10 GB (1 hour+ vlogs OK)</span></div>
         <input type="file" id="files" accept="image/*,video/*" multiple class="hide">
         <div class="thumbs" id="thumbs"></div>
+        <div id="guide"></div>
       </div>
       <div class="card">
         <h2>2. Write caption</h2>
@@ -235,7 +259,8 @@ async function loadConns(){
   $("accList").innerHTML = conns.length ? conns.map(c=>`<div class="acc"><label><span class="dot" style="background:${COLORS[c.platform]}"></span><span class="n"><b>${esc(c.platform)}</b> · ${esc(c.account_name)}</span></label><button class="btn ghost sm" data-rm="${c.id}">Remove</button></div>`).join("") : "No account connected yet.";
   document.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{ if(!confirm("Remove this account?"))return; await sb.rpc("remove_connection",{cid:b.dataset.rm}); loadConns(); });
   $("noAcc").classList.toggle("hide", conns.length>0);
-  $("pickList").innerHTML = conns.map(c=>`<div class="acc"><label><input type="checkbox" checked value="${c.id}"><span class="dot" style="background:${COLORS[c.platform]}"></span><span class="n"><b>${esc(c.platform)}</b> · ${esc(c.account_name)}</span></label></div>`).join("");
+  $("pickList").innerHTML = conns.map(c=>`<div class="acc pk"><label><input type="checkbox" checked value="${c.id}"><span class="dot" style="background:${COLORS[c.platform]}"></span><span class="n"><b>${esc(c.platform)}</b> · ${esc(c.account_name)}</span></label><div class="anote" data-pl="${c.platform}"></div></div>`).join("");
+  drawGuide();
 }
 document.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => {
   const { data:{ session } } = await sb.auth.getSession();
@@ -255,15 +280,46 @@ $("files").onchange = (e) => {
   for(const f of e.target.files){
     const isVid = f.type.startsWith("video");
     if(f.size > (isVid?10240:50)*1024*1024){ toast(`${f.name} is over ${isVid?"10 GB":"50 MB"}`); continue; }
-    picked.push({ file:f, type:f.type.startsWith("video")?"video":"image", url:URL.createObjectURL(f) });
+    const m = { file:f, type:isVid?"video":"image", url:URL.createObjectURL(f), dur:0 };
+    picked.push(m);
+    if(isVid){ const v=document.createElement("video"); v.preload="metadata"; v.onloadedmetadata=()=>{ m.dur=v.duration||0; drawThumbs(); }; v.src=m.url; }
   }
   e.target.value=""; drawThumbs();
 };
 function drawThumbs(){
-  $("thumbs").innerHTML = picked.map((m,i)=>`<div class="thumb">${m.type==="video"?`<video src="${m.url}" muted></video>`:`<img src="${m.url}">`}<button data-x="${i}">✕</button></div>`).join("");
+  $("thumbs").innerHTML = picked.map((m,i)=>`<div class="thumb">${m.type==="video"?`<video src="${m.url}#t=0.5" muted playsinline preload="metadata"></video>${m.dur?`<span class="len">${fmtDur(m.dur)}</span>`:""}`:`<img src="${m.url}">`}<button data-x="${i}">✕</button></div>`).join("");
+  drawGuide();
   document.querySelectorAll("[data-x]").forEach(b=>b.onclick=()=>{ picked.splice(+b.dataset.x,1); drawThumbs(); });
 }
 $("caption").oninput = () => $("capCount").textContent = `${$("caption").value.length} characters`;
+
+// ---------- VIDEO GUIDE (English + Urdu) ----------
+function fmtDur(s){ s=Math.round(s); const h=Math.floor(s/3600), m=Math.floor(s%3600/60), x=s%60; return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(x).padStart(2,"0"); }
+function fmtSize(b){ return b>=1073741824 ? (b/1073741824).toFixed(1)+" GB" : Math.round(b/1048576)+" MB"; }
+function vidStatus(min, big){
+  return {
+    facebook: ["ok","Will post · up to 4 hours","یہ ویڈیو لگ جائے گی"],
+    youtube: min>15 ? ["wa","Will post · channel must be verified (youtube.com/verify)","لگ جائے گی، چینل ویریفائی ہونا ضروری ہے"] : ["ok","Will post","یہ ویڈیو لگ جائے گی"],
+    instagram: min>15||big ? ["no","Too long · Instagram max 15 min / 300 MB","پندرہ منٹ سے لمبی نہیں لگتی"] : ["ok","Will post as Reel","ریل بن کر لگ جائے گی"],
+    tiktok: min>10||big ? ["no","Too long · TikTok max 10 min","دس منٹ سے لمبی نہیں لگتی"] : ["ok","Will post","یہ ویڈیو لگ جائے گی"],
+  };
+}
+function drawGuide(){
+  const vids = picked.filter(m=>m.type==="video");
+  const notes = document.querySelectorAll(".anote");
+  if(!vids.length){ $("guide").innerHTML=""; notes.forEach(n=>{ n.className="anote"; n.innerHTML=""; }); return; }
+  const dur = Math.max(...vids.map(v=>v.dur||0)), size = Math.max(...vids.map(v=>v.file.size)), min = dur/60;
+  const big = size > BIG, st = vidStatus(min, big), ic = c => c==="ok"?"✅":c==="no"?"❌":"⚠️";
+  notes.forEach(n=>{ const x = st[n.dataset.pl]; if(!x) return; n.className = "anote "+x[0]; n.innerHTML = `<span>${ic(x[0])} ${x[1]}</span><span class="ur">${x[2]}</span>`; });
+  const row = (cls, ic, en, ur) => `<div class="gr"><div class="ic ${cls}">${ic}</div><div class="tx"><div class="en">${en}</div><div class="ur">${ur}</div></div></div>`;
+  // `<div class="pc ${cls}"><b>${cls==="ok"?"✅":cls==="no"?"❌":"⚠️"} ${name}</b><div class="en">${en}</div><div class="ur">${ur}</div></div>`;
+  const NAMES = { facebook:"Facebook", youtube:"YouTube", instagram:"Instagram", tiktok:"TikTok" };
+  const r = [`<div class="pg">${Object.entries(st).map(([k,x])=>`<div class="pc ${x[0]}"><b>${ic(x[0])} ${NAMES[k]}</b><div class="en">${x[1]}</div><div class="ur">${x[2]}</div></div>`).join("")}</div>`];
+  if(big || min>5) r.push(row("wa","!","<b>Keep PostAll open</b> until it says ✅ posted. Don't lock the phone or switch apps.","جب تک ✅ نہ آئے، ایپ کھلی رکھیں۔ فون لاک نہ کریں اور دوسری ایپ پر نہ جائیں۔"));
+  if(big) r.push(row("wa","⇅","<b>Use Wi-Fi</b> for long videos. 1 hour video can take 10–40 minutes to upload.","لمبی ویڈیو کے لیے وائی فائی استعمال کریں۔ ایک گھنٹے کی ویڈیو میں دس سے چالیس منٹ لگ سکتے ہیں۔"));
+  r.push(row("","i","After posting, Facebook / YouTube need a few minutes to process HD quality.","پوسٹ کے بعد ایچ ڈی کوالٹی آنے میں فیس بک / یوٹیوب کو چند منٹ لگتے ہیں۔"));
+  $("guide").innerHTML = `<div class="guide"><div class="gh"><span>Video guide · ${dur?fmtDur(dur)+" · ":""}${fmtSize(size)}</span><span class="ur">ویڈیو گائیڈ</span></div>${r.join("")}</div>`;
+}
 
 // ---------- LONG VIDEOS (over 300 MB): phone uploads straight to Facebook / YouTube ----------
 const BIG = 300*1024*1024;
@@ -346,6 +402,7 @@ $("postBtn").onclick = async () => {
     }
     const { data:{ session } } = await sb.auth.getSession();
     $("results").innerHTML = ids.map(id=>{ const c=conns.find(x=>x.id===id); return `<div class="status wait" id="r-${id}">⏳ ${esc(c.platform)} · ${esc(c.account_name)} — posting…</div>`; }).join("");
+    if(big.length) $("results").insertAdjacentHTML("afterbegin", `<div class="status wait" id="keepOpen">⚠️ Uploading long video — keep the app open<div class="ur">لمبی ویڈیو اپلوڈ ہو رہی ہے — ایپ کھلی رکھیں</div></div>`);
     const lock = await navigator.wakeLock?.request("screen").catch(()=>null);
     await Promise.all(ids.map(async id => {
       const c = conns.find(x=>x.id===id); const el = $("r-"+id);
@@ -366,7 +423,7 @@ $("postBtn").onclick = async () => {
         else { el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${res.error}`; }
       }catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} — ${e.message}`; }
     }));
-    lock?.release?.().catch(()=>{});
+    lock?.release?.().catch(()=>{}); $("keepOpen")?.remove();
     toast("Done");
   }catch(e){ $("results").innerHTML = `<div class="status bad">❌ ${esc(e.message)}</div>`; }
   $("postBtn").disabled = false;
