@@ -101,7 +101,7 @@ code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;bo
     <div id="t-post">
       <div class="card">
         <h2>1. Pictures / Videos</h2>
-        <div class="drop" id="drop">Tap to select pictures or videos<br><span class="muted">Max 50 MB each</span></div>
+        <div class="drop" id="drop">Tap to select pictures or videos<br><span class="muted">Pictures up to 50 MB · Videos up to 500 MB (Full HD OK)</span></div>
         <input type="file" id="files" accept="image/*,video/*" multiple class="hide">
         <div class="thumbs" id="thumbs"></div>
       </div>
@@ -253,7 +253,8 @@ function handleReturn(){
 $("drop").onclick = () => $("files").click();
 $("files").onchange = (e) => {
   for(const f of e.target.files){
-    if(f.size > 50*1024*1024){ toast(`${f.name} is over 50 MB`); continue; }
+    const isVid = f.type.startsWith("video");
+    if(f.size > (isVid?500:50)*1024*1024){ toast(`${f.name} is over ${isVid?500:50} MB`); continue; }
     picked.push({ file:f, type:f.type.startsWith("video")?"video":"image", url:URL.createObjectURL(f) });
   }
   e.target.value=""; drawThumbs();
@@ -277,9 +278,22 @@ $("postBtn").onclick = async () => {
     for(const [i,m] of picked.entries()){
       const ext = (m.file.name.split(".").pop()||"bin").toLowerCase();
       const path = `${me.id}/${postId}/${i}.${ext}`;
-      const up = await sb.storage.from("media").upload(path, m.file, { contentType:m.file.type, upsert:true });
-      if(up.error) throw new Error(up.error.message);
-      media.push({ url: sb.storage.from("media").getPublicUrl(path).data.publicUrl, type:m.type, size:m.file.size });
+      const pub = p => sb.storage.from("media").getPublicUrl(p).data.publicUrl;
+      if(m.file.size <= 45*1024*1024){
+        $("results").innerHTML = `<div class="status wait">Uploading file ${i+1}/${picked.length}…</div>`;
+        const up = await sb.storage.from("media").upload(path, m.file, { contentType:m.file.type, upsert:true });
+        if(up.error) throw new Error(up.error.message);
+        media.push({ url: pub(path), type:m.type, size:m.file.size });
+      } else {
+        const PART = 40*1024*1024, n = Math.ceil(m.file.size/PART);
+        for(let k=0;k<n;k++){
+          $("results").innerHTML = `<div class="status wait">Uploading file ${i+1}/${picked.length} · ${Math.round(k/n*100)}%…</div>`;
+          const up = await sb.storage.from("media").upload(`${path}.p${k}`, m.file.slice(k*PART,(k+1)*PART), { contentType:"application/octet-stream", upsert:true });
+          if(up.error) throw new Error(up.error.message);
+        }
+        const url = `${SB_URL}/functions/v1/media?p=${encodeURIComponent(path)}&n=${n}&s=${m.file.size}&t=${encodeURIComponent(m.file.type||"video/mp4")}`;
+        media.push({ url, type:m.type, size:m.file.size, parts:n, base: pub(path) });
+      }
     }
     const { data:{ session } } = await sb.auth.getSession();
     $("results").innerHTML = ids.map(id=>{ const c=conns.find(x=>x.id===id); return `<div class="status wait" id="r-${id}">⏳ ${esc(c.platform)} · ${esc(c.account_name)} — posting…</div>`; }).join("");
