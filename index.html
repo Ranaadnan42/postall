@@ -48,6 +48,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
 .thumb{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:#000}
 .thumb img,.thumb video{width:100%;height:100%;object-fit:cover}
 .thumb button{position:absolute;top:4px;right:4px;padding:2px 8px;border-radius:8px;background:#000a;color:#fff}
+.ttrow{display:flex;gap:18px;flex-wrap:wrap}.ttrow label,.ttline{display:flex;align-items:flex-start;gap:8px;margin:6px 0}.ttrow input,.ttline input{width:20px;height:20px;flex:none}
 .status{padding:10px;border-radius:12px;margin:6px 0;border:1px solid var(--line);font-size:14px}
 .status.ok{border-color:var(--ok);color:var(--ok)}
 .status.bad{border-color:var(--bad);color:var(--bad)}
@@ -138,6 +139,21 @@ code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;bo
         <h2>3. Where to post</h2>
         <div id="pickList"></div>
         <p class="muted" id="noAcc">No account connected yet. Open the <b>Accounts</b> tab.</p>
+      </div>
+      <div class="card hide" id="ttCard">
+        <h2>TikTok post settings</h2>
+        <p class="muted" id="ttWho">Loading TikTok account…</p>
+        <p style="margin:10px 0 6px"><b>Who can view this post *</b></p>
+        <select id="ttPrivacy"><option value="">Select privacy…</option></select>
+        <p style="margin:12px 0 6px"><b>Allow users to</b></p>
+        <div class="ttrow"><label><input type="checkbox" id="ttComment"> Comment</label><label><input type="checkbox" id="ttDuet"> Duet</label><label><input type="checkbox" id="ttStitch"> Stitch</label></div>
+        <label class="ttline"><input type="checkbox" id="ttDisclose"> <span><b>Disclose post content</b><br><span class="muted">Turn on if this post promotes yourself, a brand, product or service</span></span></label>
+        <div id="ttBrand" class="hide" style="padding-left:28px">
+          <label class="ttline"><input type="checkbox" id="ttOwn"> <span><b>Your brand</b><br><span class="muted">You are promoting yourself or your own business</span></span></label>
+          <label class="ttline"><input type="checkbox" id="ttBranded"> <span><b>Branded content</b><br><span class="muted">You are promoting another brand or a third party</span></span></label>
+          <p class="muted" id="ttBrandNote"></p>
+        </div>
+        <p class="muted" id="ttConsent" style="margin-top:10px"></p>
       </div>
       <button id="postBtn" class="btn big">🚀 Post to All</button>
       <button id="snapBtn" class="btn ghost" style="width:100%;margin-top:10px">👻 Share to Snapchat / other apps</button>
@@ -261,7 +277,45 @@ async function loadConns(){
   $("noAcc").classList.toggle("hide", conns.length>0);
   $("pickList").innerHTML = conns.map(c=>`<div class="acc pk"><label><input type="checkbox" checked value="${c.id}"><span class="dot" style="background:${COLORS[c.platform]}"></span><span class="n"><b>${esc(c.platform)}</b> · ${esc(c.account_name)}</span></label><div class="anote" data-pl="${c.platform}"></div></div>`).join("");
   drawGuide();
+  $("pickList").querySelectorAll("input").forEach(i=>i.addEventListener("change", ttShow)); ttShow();
 }
+// ---------- TIKTOK POST SETTINGS (required by TikTok) ----------
+let ttInfo = {};
+const ttConn = () => [...document.querySelectorAll("#pickList input:checked")].map(i=>conns.find(c=>c.id===i.value)).find(c=>c&&c.platform==="tiktok");
+const PRIV = { PUBLIC_TO_EVERYONE:"Everyone", MUTUAL_FOLLOW_FRIENDS:"Friends", FOLLOWER_OF_CREATOR:"Followers", SELF_ONLY:"Only me" };
+async function ttShow(){
+  const c = ttConn(); $("ttCard").classList.toggle("hide", !c); if(!c) return;
+  if(ttInfo[c.id]) return ttFill(ttInfo[c.id]);
+  $("ttWho").textContent = "Loading TikTok account…";
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    const r = await fetch(`${SB_URL}/functions/v1/publish`, { method:"POST",
+      headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY },
+      body: JSON.stringify({ creator_info:true, connection_id:c.id }) }).then(r=>r.json());
+    if(!r.ok) throw new Error(r.error); ttInfo[c.id] = r; ttFill(r);
+  }catch(e){ $("ttWho").textContent = "TikTok: " + e.message; }
+}
+function ttFill(r){
+  $("ttWho").innerHTML = `Posting to TikTok as <b>${esc(r.nickname||r.username||"")}</b>${r.username?` (@${esc(r.username)})`:""}`;
+  const cur = $("ttPrivacy").value;
+  $("ttPrivacy").innerHTML = `<option value="">Select privacy…</option>` + (r.privacy_level_options||[]).map(o=>`<option value="${o}">${PRIV[o]||o}</option>`).join("");
+  if((r.privacy_level_options||[]).includes(cur)) $("ttPrivacy").value = cur;
+  [["ttComment","comment_disabled"],["ttDuet","duet_disabled"],["ttStitch","stitch_disabled"]].forEach(([id,k])=>{ $(id).disabled = !!r[k]; if(r[k]) $(id).checked = false; });
+  const photos = picked.length && picked.every(m=>m.type!=="video");
+  $("ttDuet").parentElement.classList.toggle("hide", !!photos); $("ttStitch").parentElement.classList.toggle("hide", !!photos);
+  ttBrand();
+}
+function ttBrand(){
+  const on = $("ttDisclose").checked; $("ttBrand").classList.toggle("hide", !on);
+  const own = on && $("ttOwn").checked, br = on && $("ttBranded").checked;
+  const so = [...$("ttPrivacy").options].find(o=>o.value==="SELF_ONLY");
+  if(so){ so.disabled = br; so.textContent = br ? "Only me (not allowed for branded content)" : "Only me"; if(br && $("ttPrivacy").value==="SELF_ONLY") $("ttPrivacy").value=""; }
+  $("ttBrandNote").textContent = !on ? "" : (!own && !br) ? "Choose at least one option above." : br ? 'Your post will be labeled as "Paid partnership".' : 'Your post will be labeled as "Promotional content".';
+  $("ttConsent").innerHTML = br
+    ? `By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank">Branded Content Policy</a> and <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank">Music Usage Confirmation</a>.`
+    : `By posting, you agree to TikTok's <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank">Music Usage Confirmation</a>.`;
+}
+["ttDisclose","ttOwn","ttBranded"].forEach(id=>$(id).addEventListener("change", ttBrand));
 document.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => {
   const { data:{ session } } = await sb.auth.getSession();
   const ret = location.origin + location.pathname;
@@ -305,6 +359,7 @@ function vidStatus(min, big){
   };
 }
 function drawGuide(){
+  { const _c = ttConn(); if(_c && ttInfo[_c.id]) ttFill(ttInfo[_c.id]); }
   const vids = picked.filter(m=>m.type==="video");
   const notes = document.querySelectorAll(".anote");
   if(!vids.length){ $("guide").innerHTML=""; notes.forEach(n=>{ n.className="anote"; n.innerHTML=""; }); return; }
@@ -378,6 +433,14 @@ $("postBtn").onclick = async () => {
   const caption = $("caption").value.trim();
   if(!ids.length) return toast("Select at least one account");
   if(!picked.length && !caption) return toast("Add a picture/video or write a caption");
+  let tt = null;
+  if(ttConn()){
+    if(!$("ttPrivacy").value) return toast("TikTok: choose who can view this post");
+    if($("ttDisclose").checked && !$("ttOwn").checked && !$("ttBranded").checked) return toast("TikTok: choose Your brand and/or Branded content");
+    const on = $("ttDisclose").checked;
+    tt = { privacy:$("ttPrivacy").value, disable_comment:!$("ttComment").checked, disable_duet:!$("ttDuet").checked, disable_stitch:!$("ttStitch").checked,
+      brand_organic_toggle: on && $("ttOwn").checked, brand_content_toggle: on && $("ttBranded").checked };
+  }
   $("postBtn").disabled = true; $("results").innerHTML = `<div class="status wait">Uploading files…</div>`;
   try{
     const postId = crypto.randomUUID();
@@ -421,7 +484,7 @@ $("postBtn").onclick = async () => {
       try{
         const res = await fetch(`${SB_URL}/functions/v1/publish`, { method:"POST",
           headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY },
-          body: JSON.stringify({ post_id:postId, connection_id:id, caption, media }) }).then(r=>r.json());
+          body: JSON.stringify({ post_id:postId, connection_id:id, caption, media, tt: c.platform==="tiktok" ? tt : undefined }) }).then(r=>r.json());
         if(res.ok){ el.className="status ok"; el.textContent = `✅ ${c.platform} · ${c.account_name} — ${res.skipped || (res.privacy==="SELF_ONLY"?"posted (private)":"posted")}`; }
         else { el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${res.error}`; }
       }catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} — ${e.message}`; }
