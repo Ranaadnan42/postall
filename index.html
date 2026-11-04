@@ -196,6 +196,9 @@ $("authBtn").onclick = async () => {
 };
 $("logoutBtn").onclick = () => sb.auth.signOut();
 sb.auth.onAuthStateChange((_e, session) => { me = session?.user || null; render(); });
+// Device clock may be wrong: always get a fresh token from server on load and every 20 min
+const freshToken = async () => { const { data:{ session } } = await sb.auth.getSession(); if(session) await sb.auth.refreshSession(); };
+freshToken(); setInterval(freshToken, 20*60*1000);
 
 async function render(){
   $("authView").classList.toggle("hide", !!me);
