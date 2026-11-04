@@ -101,7 +101,7 @@ code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;bo
     <div id="t-post">
       <div class="card">
         <h2>1. Pictures / Videos</h2>
-        <div class="drop" id="drop">Tap to select pictures or videos<br><span class="muted">Pictures up to 50 MB · Videos up to 500 MB (Full HD OK)</span></div>
+        <div class="drop" id="drop">Tap to select pictures or videos<br><span class="muted">Pictures up to 50 MB · Videos up to 10 GB (1 hour+ vlogs OK)</span></div>
         <input type="file" id="files" accept="image/*,video/*" multiple class="hide">
         <div class="thumbs" id="thumbs"></div>
       </div>
@@ -254,7 +254,7 @@ $("drop").onclick = () => $("files").click();
 $("files").onchange = (e) => {
   for(const f of e.target.files){
     const isVid = f.type.startsWith("video");
-    if(f.size > (isVid?500:50)*1024*1024){ toast(`${f.name} is over ${isVid?500:50} MB`); continue; }
+    if(f.size > (isVid?10240:50)*1024*1024){ toast(`${f.name} is over ${isVid?"10 GB":"50 MB"}`); continue; }
     picked.push({ file:f, type:f.type.startsWith("video")?"video":"image", url:URL.createObjectURL(f) });
   }
   e.target.value=""; drawThumbs();
@@ -265,6 +265,54 @@ function drawThumbs(){
 }
 $("caption").oninput = () => $("capCount").textContent = `${$("caption").value.length} characters`;
 
+// ---------- LONG VIDEOS (over 300 MB): phone uploads straight to Facebook / YouTube ----------
+const BIG = 300*1024*1024;
+async function retry(fn){ for(let t=0;;t++){ try{ return await fn(); }catch(e){ if(t>=4) throw e; await new Promise(r=>setTimeout(r,3000*(t+1))); } } }
+async function longVideo(c, file, caption, postId, session, prog){
+  const call = b => fetch(`${SB_URL}/functions/v1/direct`, { method:"POST",
+    headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY }, body: JSON.stringify(b) }).then(r=>r.json());
+  const k = await call({ connection_id:c.id });
+  if(!k.ok) throw new Error(k.error);
+  let result;
+  try{
+    if(c.platform==="facebook"){
+      const g = `https://graph-video.facebook.com/${k.graph}/${k.account_id}/videos`;
+      const fb = async f => { const r = await fetch(g,{ method:"POST", body:f }).then(r=>r.json()); if(r.error) throw new Error(r.error.message); return r; };
+      const form = o => { const f = new FormData(); for(const [a,b] of Object.entries(o)) f.append(a,b); f.append("access_token",k.token); return f; };
+      const st = await retry(()=>fb(form({ upload_phase:"start", file_size:String(file.size) })));
+      let a = +st.start_offset, b = +st.end_offset;
+      while(a < b){
+        prog(Math.floor(a/file.size*100));
+        const r = await retry(()=>fb(form({ upload_phase:"transfer", upload_session_id:st.upload_session_id, start_offset:String(a), video_file_chunk:new File([file.slice(a,b)],"chunk") })));
+        a = +r.start_offset; b = +r.end_offset;
+      }
+      await retry(()=>fb(form({ upload_phase:"finish", upload_session_id:st.upload_session_id, description:caption })));
+      result = { ok:true, ids:[st.video_id] };
+    } else {
+      const title = (caption.split("\n")[0] || "New video").replace(/[<>]/g,"").slice(0,100);
+      const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", { method:"POST",
+        headers:{ Authorization:`Bearer ${k.token}`, "Content-Type":"application/json", "X-Upload-Content-Type":file.type||"video/*", "X-Upload-Content-Length":String(file.size) },
+        body: JSON.stringify({ snippet:{ title, description:caption.replace(/[<>]/g,"").slice(0,4900) }, status:{ privacyStatus:"public", selfDeclaredMadeForKids:false } }) });
+      if(!init.ok) throw new Error("YouTube: "+((await init.json().catch(()=>({}))).error?.message || init.status));
+      const loc = init.headers.get("location");
+      const CH = 32*1024*1024; let a = 0, id = null;
+      while(a < file.size){
+        prog(Math.floor(a/file.size*100));
+        const b = Math.min(a+CH, file.size)-1;
+        const up = await retry(async()=>{ const r = await fetch(loc,{ method:"PUT", headers:{ "Content-Range":`bytes ${a}-${b}/${file.size}` }, body:file.slice(a,b+1) });
+          if(r.status>=500) throw new Error("YouTube busy"); return r; });
+        if(up.status===308){ const rg = up.headers.get("range"); a = rg ? +rg.split("-")[1]+1 : b+1; continue; }
+        const j = await up.json().catch(()=>({}));
+        if(!up.ok || !j.id) throw new Error("YouTube: "+(j.error?.message || up.status));
+        id = j.id; break;
+      }
+      result = { ok:true, ids:[id] };
+    }
+  }catch(e){ result = { ok:false, error:e.message }; }
+  await call({ connection_id:c.id, post_id:postId, caption, result }).catch(()=>{});
+  if(!result.ok) throw new Error(result.error);
+}
+
 // ---------- POST TO ALL ----------
 $("postBtn").onclick = async () => {
   const ids = [...document.querySelectorAll("#pickList input:checked")].map(i=>i.value);
@@ -274,8 +322,9 @@ $("postBtn").onclick = async () => {
   $("postBtn").disabled = true; $("results").innerHTML = `<div class="status wait">Uploading files…</div>`;
   try{
     const postId = crypto.randomUUID();
-    const media = [];
+    const media = [], big = [];
     for(const [i,m] of picked.entries()){
+      if(m.type==="video" && m.file.size > BIG){ big.push(m); continue; }
       const ext = (m.file.name.split(".").pop()||"bin").toLowerCase();
       const path = `${me.id}/${postId}/${i}.${ext}`;
       const pub = p => sb.storage.from("media").getPublicUrl(p).data.publicUrl;
@@ -297,8 +346,18 @@ $("postBtn").onclick = async () => {
     }
     const { data:{ session } } = await sb.auth.getSession();
     $("results").innerHTML = ids.map(id=>{ const c=conns.find(x=>x.id===id); return `<div class="status wait" id="r-${id}">⏳ ${esc(c.platform)} · ${esc(c.account_name)} — posting…</div>`; }).join("");
+    const lock = await navigator.wakeLock?.request("screen").catch(()=>null);
     await Promise.all(ids.map(async id => {
       const c = conns.find(x=>x.id===id); const el = $("r-"+id);
+      if(big.length){
+        if(c.platform==="facebook"||c.platform==="youtube"){
+          for(const [j,v] of big.entries()){
+            try{ await longVideo(c, v.file, caption, postId, session, pc => { el.textContent = `⏳ ${c.platform} · ${c.account_name} — uploading long video ${big.length>1?(j+1)+"/"+big.length+" ":""}${pc}%`; }); }
+            catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${e.message}`; return; }
+          }
+          if(!media.length){ el.className="status ok"; el.textContent = `✅ ${c.platform} · ${c.account_name} — posted`; return; }
+        } else if(!media.length){ el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${c.platform==="instagram"?"Instagram":"TikTok"} only takes videos up to 300 MB (Instagram max 15 min, TikTok max 10 min)`; return; }
+      }
       try{
         const res = await fetch(`${SB_URL}/functions/v1/publish`, { method:"POST",
           headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY },
@@ -307,6 +366,7 @@ $("postBtn").onclick = async () => {
         else { el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${res.error}`; }
       }catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} — ${e.message}`; }
     }));
+    lock?.release?.().catch(()=>{});
     toast("Done");
   }catch(e){ $("results").innerHTML = `<div class="status bad">❌ ${esc(e.message)}</div>`; }
   $("postBtn").disabled = false;
