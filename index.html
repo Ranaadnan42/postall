@@ -282,7 +282,7 @@ $("files").onchange = (e) => {
     if(f.size > (isVid?10240:50)*1024*1024){ toast(`${f.name} is over ${isVid?"10 GB":"50 MB"}`); continue; }
     const m = { file:f, type:isVid?"video":"image", url:URL.createObjectURL(f), dur:0 };
     picked.push(m);
-    if(isVid){ const v=document.createElement("video"); v.preload="metadata"; v.onloadedmetadata=()=>{ m.dur=v.duration||0; drawThumbs(); }; v.src=m.url; }
+    if(isVid){ const v=document.createElement("video"); v.preload="metadata"; v.onloadedmetadata=()=>{ m.dur=v.duration||0; m.w=v.videoWidth; m.h=v.videoHeight; drawThumbs(); }; v.src=m.url; }
   }
   e.target.value=""; drawThumbs();
 };
@@ -313,8 +313,11 @@ function drawGuide(){
   notes.forEach(n=>{ const x = st[n.dataset.pl]; if(!x) return; n.className = "anote "+x[0]; n.innerHTML = `<span>${ic(x[0])} ${x[1]}</span><span class="ur">${x[2]}</span>`; });
   const row = (cls, ic, en, ur) => `<div class="gr"><div class="ic ${cls}">${ic}</div><div class="tx"><div class="en">${en}</div><div class="ur">${ur}</div></div></div>`;
   // `<div class="pc ${cls}"><b>${cls==="ok"?"✅":cls==="no"?"❌":"⚠️"} ${name}</b><div class="en">${en}</div><div class="ur">${ur}</div></div>`;
+  const top = vids.reduce((a,v)=>v.file.size>a.file.size?v:a), px = Math.min(top.w||0, top.h||0);
+  const q = px>=2000?"4K":px>=1400?"2K":px>=1000?"1080p Full HD":px>=700?"720p HD":px?px+"p":"";
   const NAMES = { facebook:"Facebook", youtube:"YouTube", instagram:"Instagram", tiktok:"TikTok" };
-  const r = [`<div class="pg">${Object.entries(st).map(([k,x])=>`<div class="pc ${x[0]}"><b>${ic(x[0])} ${NAMES[k]}</b><div class="en">${x[1]}</div><div class="ur">${x[2]}</div></div>`).join("")}</div>`];
+  const r = [row("ok","<small style=\"font-size:10px;font-weight:800\">HD</small>",`<b>Original quality${q?" · "+q:""} · ${fmtSize(size)}</b> — this is your video's real HD size. PostAll sends it exactly as it is, no compression, no quality loss.`,
+    `یہ آپ کی ویڈیو کا اصل ایچ ڈی سائز ہے۔ ویڈیو بالکل اسی کوالٹی میں جائے گی، کوالٹی کم نہیں ہو گی۔`), `<div class="pg">${Object.entries(st).map(([k,x])=>`<div class="pc ${x[0]}"><b>${ic(x[0])} ${NAMES[k]}</b><div class="en">${x[1]}</div><div class="ur">${x[2]}</div></div>`).join("")}</div>`];
   if(big || min>5) r.push(row("wa","!","<b>Keep PostAll open</b> until it says ✅ posted. Don't lock the phone or switch apps.","جب تک ✅ نہ آئے، ایپ کھلی رکھیں۔ فون لاک نہ کریں اور دوسری ایپ پر نہ جائیں۔"));
   if(big) r.push(row("wa","⇅","<b>Use Wi-Fi</b> for long videos. 1 hour video can take 10–40 minutes to upload.","لمبی ویڈیو کے لیے وائی فائی استعمال کریں۔ ایک گھنٹے کی ویڈیو میں دس سے چالیس منٹ لگ سکتے ہیں۔"));
   r.push(row("","i","After posting, Facebook / YouTube need a few minutes to process HD quality.","پوسٹ کے بعد ایچ ڈی کوالٹی آنے میں فیس بک / یوٹیوب کو چند منٹ لگتے ہیں۔"));
