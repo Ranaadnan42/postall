@@ -176,9 +176,19 @@ code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;bo
           <div class="plat"><b><span class="dot" style="background:#111"></span>TikTok</b>
             <span class="muted">Videos & photos</span>
             <button class="btn sm" data-c="tiktok">Connect</button></div>
+          <div class="plat"><b><span class="dot" style="background:#229ed9"></span>Telegram</b>
+            <span class="muted">Your channel or group (via your own bot)</span>
+            <button class="btn sm" id="tgOpen">Connect</button></div>
           <div class="plat"><b><span class="dot" style="background:#fffc00;border:1px solid #ccc"></span>Snapchat</b>
             <span class="muted">Use the "Share to Snapchat" button on the Post tab</span></div>
         </div>
+      </div>
+      <div class="card hide" id="tgBox">
+        <h2>Connect Telegram</h2>
+        <p class="muted" style="margin-top:0">1. Telegram mein <b>@BotFather</b> kholein → <b>/newbot</b> → naam dein → jo token mile wo copy karein.<br>2. Apne channel ki settings → <b>Administrators</b> → apna bot admin bana dein (Post messages on).<br>3. Neeche token aur channel ka username daal kar Connect dabayein.</p>
+        <input id="tgToken" placeholder="Bot token (123456:ABC...)" autocomplete="off" style="margin-bottom:8px">
+        <input id="tgChat" placeholder="Channel username, e.g. @mychannel" autocomplete="off" style="margin-bottom:8px">
+        <button class="btn" id="tgSave" style="width:100%">Connect Telegram</button>
       </div>
       <div class="card"><h2>Connected</h2><div id="accList" class="muted">Loading…</div></div>
     </div>
@@ -213,7 +223,7 @@ const SB_KEY = "sb_publishable_D8XiYGxRQom9bQ7QTGJGNw_pb3CvQuJ";
 const SUPPORT_WHATSAPP = "923075267349";
 const sb = supabase.createClient(SB_URL, SB_KEY);
 const $ = (id) => document.getElementById(id);
-const COLORS = { facebook:"#1877f2", instagram:"#e1306c", youtube:"#ff0000", tiktok:"#111" };
+const COLORS = { facebook:"#1877f2", instagram:"#e1306c", youtube:"#ff0000", tiktok:"#111", telegram:"#229ed9" };
 let me = null, profile = null, conns = [], picked = [], signup = false;
 
 function toast(t){ const el=$("toast"); el.textContent=t; el.classList.remove("hide"); clearTimeout(toast.t); toast.t=setTimeout(()=>el.classList.add("hide"),4000); }
@@ -323,6 +333,19 @@ document.querySelectorAll("[data-c]").forEach(b => b.onclick = async () => {
   const ret = location.origin + location.pathname;
   location.href = `${SB_URL}/functions/v1/connect/start?platform=${b.dataset.c}&token=${encodeURIComponent(session.access_token)}&return=${encodeURIComponent(ret)}`;
 });
+$("tgOpen").onclick = () => { $("tgBox").classList.toggle("hide"); $("tgToken").focus(); };
+$("tgSave").onclick = async () => {
+  const b = $("tgSave"); b.disabled = true; b.textContent = "Checking…";
+  try{
+    const { data:{ session } } = await sb.auth.getSession();
+    const r = await fetch(`${SB_URL}/functions/v1/telegram`, { method:"POST",
+      headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY },
+      body: JSON.stringify({ bot_token:$("tgToken").value, chat:$("tgChat").value }) }).then(r=>r.json());
+    if(r.ok){ toast("✅ Telegram connected: "+r.name); $("tgToken").value=""; $("tgChat").value=""; $("tgBox").classList.add("hide"); loadConns(); }
+    else toast("❌ "+r.error);
+  }catch(e){ toast("❌ "+e.message); }
+  b.disabled = false; b.textContent = "Connect Telegram";
+};
 function handleReturn(){
   const p = new URLSearchParams(location.search);
   if(p.get("connected")) toast(`✅ ${p.get("connected")} connected`);
@@ -366,13 +389,15 @@ function drawGuide(){
   const notes = document.querySelectorAll(".anote");
   if(!vids.length){ $("guide").innerHTML=""; notes.forEach(n=>{ n.className="anote"; n.innerHTML=""; }); return; }
   const dur = Math.max(...vids.map(v=>v.dur||0)), size = Math.max(...vids.map(v=>v.file.size)), min = dur/60;
-  const big = size > BIG, st = vidStatus(min, big), ic = c => c==="ok"?"✅":c==="no"?"❌":"⚠️";
+  const big = size > BIG, st = vidStatus(min, big);
+  if(conns.some(c=>c.platform==="telegram")) st.telegram = size > 50*1024*1024 ? ["no","Too big · Telegram bots max 50 MB","پچاس ایم بی سے بڑی نہیں لگتی"] : ["ok","Will post","یہ ویڈیو لگ جائے گی"];
+  const ic = c => c==="ok"?"✅":c==="no"?"❌":"⚠️";
   notes.forEach(n=>{ const x = st[n.dataset.pl]; if(!x) return; n.className = "anote "+x[0]; n.innerHTML = `<span>${ic(x[0])} ${x[1]}</span><span class="ur">${x[2]}</span>`; });
   const row = (cls, ic, en, ur) => `<div class="gr"><div class="ic ${cls}">${ic}</div><div class="tx"><div class="en">${en}</div><div class="ur">${ur}</div></div></div>`;
   // `<div class="pc ${cls}"><b>${cls==="ok"?"✅":cls==="no"?"❌":"⚠️"} ${name}</b><div class="en">${en}</div><div class="ur">${ur}</div></div>`;
   const top = vids.reduce((a,v)=>v.file.size>a.file.size?v:a), px = Math.min(top.w||0, top.h||0);
   const q = px>=2000?"4K":px>=1400?"2K":px>=1000?"1080p Full HD":px>=700?"720p HD":px?px+"p":"";
-  const NAMES = { facebook:"Facebook", youtube:"YouTube", instagram:"Instagram", tiktok:"TikTok" };
+  const NAMES = { facebook:"Facebook", youtube:"YouTube", instagram:"Instagram", tiktok:"TikTok", telegram:"Telegram" };
   const r = [row("ok","<small style=\"font-size:10px;font-weight:800\">HD</small>",`<b>Original quality${q?" · "+q:""} · ${fmtSize(size)}</b> — this is your video's real HD size. PostAll sends it exactly as it is, no compression, no quality loss.`,
     `یہ آپ کی ویڈیو کا اصل ایچ ڈی سائز ہے۔ ویڈیو بالکل اسی کوالٹی میں جائے گی، کوالٹی کم نہیں ہو گی۔`), `<div class="pg">${Object.entries(st).map(([k,x])=>`<div class="pc ${x[0]}"><b>${ic(x[0])} ${NAMES[k]}</b><div class="en">${x[1]}</div><div class="ur">${x[2]}</div></div>`).join("")}</div>`];
   if(big || min>5) r.push(row("wa","!","<b>Keep PostAll open</b> until it says ✅ posted. Don't lock the phone or switch apps.","جب تک ✅ نہ آئے، ایپ کھلی رکھیں۔ فون لاک نہ کریں اور دوسری ایپ پر نہ جائیں۔"));
@@ -481,7 +506,7 @@ $("postBtn").onclick = async () => {
             catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${e.message}`; return; }
           }
           if(!media.length){ el.className="status ok"; el.textContent = `✅ ${c.platform} · ${c.account_name} — posted`; return; }
-        } else if(!media.length){ el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${c.platform==="instagram"?"Instagram":"TikTok"} only takes videos up to 300 MB (Instagram max 15 min, TikTok max 10 min)`; return; }
+        } else if(!media.length){ el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${c.platform==="telegram"?"Telegram bots only take files up to 50 MB":(c.platform==="instagram"?"Instagram":"TikTok")+" only takes videos up to 300 MB (Instagram max 15 min, TikTok max 10 min)"}`; return; }
       }
       try{
         const res = await fetch(`${SB_URL}/functions/v1/publish`, { method:"POST",
