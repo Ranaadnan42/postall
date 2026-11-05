@@ -401,7 +401,7 @@ function drawGuide(){
   const r = [row("ok","<small style=\"font-size:10px;font-weight:800\">HD</small>",`<b>Original quality${q?" · "+q:""} · ${fmtSize(size)}</b> — this is your video's real HD size. PostAll sends it exactly as it is, no compression, no quality loss.`,
     `یہ آپ کی ویڈیو کا اصل ایچ ڈی سائز ہے۔ ویڈیو بالکل اسی کوالٹی میں جائے گی، کوالٹی کم نہیں ہو گی۔`), `<div class="pg">${Object.entries(st).map(([k,x])=>`<div class="pc ${x[0]}"><b>${ic(x[0])} ${NAMES[k]}</b><div class="en">${x[1]}</div><div class="ur">${x[2]}</div></div>`).join("")}</div>`];
   if(big || min>5) r.push(row("wa","!","<b>Keep PostAll open</b> until it says ✅ posted. Don't lock the phone or switch apps.","جب تک ✅ نہ آئے، ایپ کھلی رکھیں۔ فون لاک نہ کریں اور دوسری ایپ پر نہ جائیں۔"));
-  if(big) r.push(row("wa","⇅","<b>Use Wi-Fi</b> for long videos. 1 hour video can take 10–40 minutes to upload.","لمبی ویڈیو کے لیے وائی فائی استعمال کریں۔ ایک گھنٹے کی ویڈیو میں دس سے چالیس منٹ لگ سکتے ہیں۔"));
+  if(big) r.push(row("wa","⇅","<b>Use Wi-Fi</b> for long videos. Upload time depends on your internet speed — PostAll shows the exact time left while uploading.","لمبی ویڈیو کے لیے وائی فائی استعمال کریں۔ وقت آپ کے انٹرنیٹ کی سپیڈ پر ہے، اپلوڈ کے دوران باقی وقت ساتھ ساتھ نظر آئے گا۔"));
   r.push(row("","i","After posting, Facebook / YouTube need a few minutes to process HD quality.","پوسٹ کے بعد ایچ ڈی کوالٹی آنے میں فیس بک / یوٹیوب کو چند منٹ لگتے ہیں۔"));
   $("guide").innerHTML = `<div class="guide"><div class="gh"><span>Video guide · ${dur?fmtDur(dur)+" · ":""}${fmtSize(size)}</span><span class="ur">ویڈیو گائیڈ</span></div>${r.join("")}</div>`;
 }
@@ -409,6 +409,8 @@ function drawGuide(){
 // ---------- LONG VIDEOS (over 300 MB): phone uploads straight to Facebook / YouTube ----------
 const BIG = 300*1024*1024;
 async function retry(fn){ for(let t=0;;t++){ try{ return await fn(); }catch(e){ if(t>=4) throw e; await new Promise(r=>setTimeout(r,3000*(t+1))); } } }
+// "~3 min left" from how fast the upload is really going on this phone/internet
+const eta = (t0, done, total) => { if(done<=0) return ""; const sec = (Date.now()-t0)/1000*(total-done)/done; return sec<60 ? " · <1 min left" : ` · ~${Math.ceil(sec/60)} min left`; };
 async function longVideo(c, file, caption, postId, session, prog){
   const call = b => fetch(`${SB_URL}/functions/v1/direct`, { method:"POST",
     headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session.access_token}`, apikey:SB_KEY }, body: JSON.stringify(b) }).then(r=>r.json());
@@ -483,12 +485,13 @@ $("postBtn").onclick = async () => {
         if(up.error) throw new Error(up.error.message);
         media.push({ url: pub(path), type:m.type, size:m.file.size });
       } else {
-        const PART = 40*1024*1024, n = Math.ceil(m.file.size/PART);
-        for(let k=0;k<n;k++){
-          $("results").innerHTML = `<div class="status wait">Uploading file ${i+1}/${picked.length} · ${Math.round(k/n*100)}%…</div>`;
-          const up = await sb.storage.from("media").upload(`${path}.p${k}`, m.file.slice(k*PART,(k+1)*PART), { contentType:"application/octet-stream", upsert:true });
-          if(up.error) throw new Error(up.error.message);
-        }
+        const PART = 40*1024*1024, n = Math.ceil(m.file.size/PART), t0 = Date.now(); let done = 0, next = 0;
+        const show = () => { $("results").innerHTML = `<div class="status wait">Uploading file ${i+1}/${picked.length} · ${Math.round(done/n*100)}%${eta(t0, done, n)}…</div>`; };
+        show();
+        // 3 parts at the same time = faster on good internet
+        await Promise.all([0,1,2].map(async () => { while(next < n){ const k = next++;
+          const up = await retry(async()=>{ const r = await sb.storage.from("media").upload(`${path}.p${k}`, m.file.slice(k*PART,(k+1)*PART), { contentType:"application/octet-stream", upsert:true }); if(r.error) throw new Error(r.error.message); return r; });
+          done++; show(); } }));
         const url = `${SB_URL}/functions/v1/media?p=${encodeURIComponent(path)}&n=${n}&s=${m.file.size}&t=${encodeURIComponent(m.file.type||"video/mp4")}`;
         media.push({ url, type:m.type, size:m.file.size, parts:n, base: pub(path) });
       }
@@ -502,7 +505,8 @@ $("postBtn").onclick = async () => {
       if(big.length){
         if(c.platform==="facebook"||c.platform==="youtube"){
           for(const [j,v] of big.entries()){
-            try{ await longVideo(c, v.file, caption, postId, session, pc => { el.textContent = `⏳ ${c.platform} · ${c.account_name} — uploading long video ${big.length>1?(j+1)+"/"+big.length+" ":""}${pc}%`; }); }
+            const t0 = Date.now();
+            try{ await longVideo(c, v.file, caption, postId, session, pc => { el.textContent = `⏳ ${c.platform} · ${c.account_name} — uploading long video ${big.length>1?(j+1)+"/"+big.length+" ":""}${pc}%${eta(t0, pc, 100)}`; }); }
             catch(e){ el.className="status bad"; el.textContent = `❌ ${c.platform} · ${c.account_name} — ${e.message}`; return; }
           }
           if(!media.length){ el.className="status ok"; el.textContent = `✅ ${c.platform} · ${c.account_name} — posted`; return; }
