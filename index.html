@@ -6,8 +6,10 @@
 <title>PostAll</title>
 <meta name="theme-color" content="#0f172a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://fchitemkdutfjvfzybhq.supabase.co">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <style>
 :root{
   --bg:#f4f6fb; --card:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0;
@@ -70,19 +72,19 @@ code{font-size:12px;word-break:break-all;background:#64748b22;padding:2px 6px;bo
 .guide .ic.ok{background:#05966918}.guide .ic.no{background:#dc262618}.guide .ic.wa{background:#d9770618}
 .guide .tx{flex:1;min-width:0}
 .guide .en{font-size:13.5px;line-height:1.45}
-.guide .ur,.ur{font-family:"Noto Nastaliq Urdu",serif;direction:rtl;text-align:right;font-size:13.5px;line-height:2.1;color:var(--muted)}
-.guide .gh .ur{color:inherit;line-height:1.8}
+.guide .ur,.ur{font-family:"Segoe UI","Noto Naskh Arabic",Tahoma,sans-serif;direction:rtl;text-align:right;font-size:12px;line-height:1.5;color:var(--muted)}
+.guide .gh .ur{color:inherit;line-height:1.4}
 .guide .pg{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
 .guide .pc{border:1px solid var(--line);border-radius:12px;padding:8px 10px}
 .guide .pc.ok{border-color:#05966955;background:#05966908}.guide .pc.no{border-color:#dc262655;background:#dc262608}.guide .pc.wa{border-color:#d9770655;background:#d9770608}
 .guide .pc b{display:block;font-size:13.5px}
 .guide .pc .en{font-size:12px;color:var(--muted);line-height:1.35}
-.guide .pc .ur{font-size:12px;line-height:1.9;text-align:right}
+.guide .pc .ur{font-size:11px;line-height:1.4;text-align:right}
 .acc.pk{flex-wrap:wrap}
 .anote{flex-basis:100%;margin:6px 0 0 30px;padding:6px 10px;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;font-weight:600}
 .anote:empty{display:none}
 .anote.ok{background:#05966912;color:var(--ok)}.anote.no{background:#dc262612;color:var(--bad)}.anote.wa{background:#d9770612;color:var(--warn)}
-.anote .ur{margin-left:auto;font-size:12px;line-height:1.8;color:inherit;font-weight:400}
+.anote .ur{margin-left:auto;font-size:11px;line-height:1.4;color:inherit;font-weight:400}
 .thumb .len{position:absolute;left:4px;bottom:4px;padding:1px 6px;border-radius:6px;background:#000a;color:#fff;font-size:11px;font-weight:700}
 .status .ur{margin-top:4px}
 .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:12px 18px;border-radius:12px;max-width:92%;z-index:9}
@@ -235,21 +237,21 @@ $("authBtn").onclick = async () => {
   if(signup && !r.data.session) return toast("Check your email and tap the confirm link, then login.");
 };
 $("logoutBtn").onclick = () => sb.auth.signOut();
-sb.auth.onAuthStateChange((_e, session) => { me = session?.user || null; render(); });
+let lastUid;
+sb.auth.onAuthStateChange((_e, session) => { me = session?.user || null; if((me?.id||null)===lastUid) return; lastUid = me?.id||null; render(); });
 // Device clock may be wrong: always get a fresh token from server on load and every 20 min
 const freshToken = async () => { const { data:{ session } } = await sb.auth.getSession(); if(session) await sb.auth.refreshSession(); };
-freshToken(); setInterval(freshToken, 20*60*1000);
+setTimeout(freshToken, 4000); setInterval(freshToken, 20*60*1000);
 
 async function render(){
   $("authView").classList.toggle("hide", !!me);
   $("appView").classList.toggle("hide", !me);
   $("logoutBtn").classList.toggle("hide", !me);
   if(!me) return;
-  const { data } = await sb.from("profiles").select("*").eq("id", me.id).single();
+  const [{ data }] = await Promise.all([ sb.from("profiles").select("*").eq("id", me.id).single(), loadConns() ]);
   profile = data;
   $("adminTab").classList.toggle("hide", !profile?.is_admin);
   subBanner();
-  await loadConns();
   handleReturn();
 }
 function subBanner(){
